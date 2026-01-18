@@ -1,19 +1,16 @@
 import streamlit as st
-import google.generativeai as genai
 import requests
+import json
 from PIL import Image
 
-# --- CONFIGURATION (UPDATED WITH NEW KEY) ---
-GEMINI_KEY = "AIzaSyDW70sARpfWEN2PzFqa0kqF0nzUbXK9n3Q" 
+# --- CONFIGURATION ---
+# Aapki Nayi Fresh API Key
+API_KEY = "AIzaSyDW70sARpfWEN2PzFqa0kqF0nzUbXK9n3Q"
 FMP_KEY = "Qb1mjKvn5F2xVkkWOchTAzhUGz37JSsM"
 
-# Setup AI
-genai.configure(api_key=GEMINI_KEY)
-
-# Page Setup
 st.set_page_config(page_title="Pro Trading Dashboard", layout="wide")
 
-# CSS: Full Screen Chart Fix
+# CSS: Full Screen Chart
 st.markdown("""
     <style>
         .block-container {padding-top: 0rem; padding-bottom: 0rem; padding-left: 1rem; padding-right: 1rem;}
@@ -23,7 +20,33 @@ st.markdown("""
 
 st.markdown("<h2 style='text-align: center; color: #EAB308;'>🚀 AI Trading Command Center</h2>", unsafe_allow_html=True)
 
-# --- 1. LIVE CHART (Height Fixed 800px) ---
+# --- DIRECT GOOGLE CONNECTION FUNCTION ---
+def chat_with_google(prompt):
+    # Hum seedha URL par request bhejenge, Library ki zaroorat nahi
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            # Agar Flash model fail ho, toh backup Pro model try karo
+            url_backup = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}"
+            response = requests.post(url_backup, headers=headers, data=json.dumps(payload))
+            if response.status_code == 200:
+                 return response.json()['candidates'][0]['content']['parts'][0]['text']
+            else:
+                 return f"Error: {response.status_code} - {response.text}"
+    except Exception as e:
+        return f"Connection Failed: {str(e)}"
+
+# --- 1. LIVE CHART ---
 tradingview_html = """
     <div class="tradingview-widget-container" style="height:800px; width:100%;">
         <div id="tradingview_any"></div>
@@ -56,7 +79,7 @@ st.divider()
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.subheader("💬 AI Assistant")
+    st.subheader("💬 AI Assistant (No Library)")
     
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -71,15 +94,11 @@ with col1:
             st.markdown(chat_input)
             
         with st.chat_message("assistant"):
-            try:
-                # Nayi Key ke saath latest model use kar rahe hain
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                with st.spinner("AI thinking..."):
-                    res = model.generate_content(chat_input)
-                    st.markdown(res.text)
-                    st.session_state.messages.append({"role": "assistant", "content": res.text})
-            except Exception as e:
-                st.error(f"Error: {e}")
+            with st.spinner("AI thinking..."):
+                # Call Direct Function
+                res_text = chat_with_google(chat_input)
+                st.markdown(res_text)
+                st.session_state.messages.append({"role": "assistant", "content": res_text})
 
 with col2:
     st.subheader("📢 News Updates")
