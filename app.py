@@ -19,15 +19,14 @@ st.markdown("""
 
 st.markdown("<h2 style='text-align: center; color: #EAB308;'>🚀 AI Trading Command Center</h2>", unsafe_allow_html=True)
 
-# --- SMART CONNECTION (AUTO-SWITCH IF QUOTA FULL) ---
+# --- SMART CONNECTION (ONLY YOUR AVAILABLE MODELS) ---
 def get_gemini_response_smart(prompt):
-    # Hum pehle Free/Experimental model try karenge, phir Standard, phir Pro.
-    # Agar ek par 429 (Quota Error) aaya, toh agla try karenge.
+    # Aapki Doctor List se verified models (Priority Order)
     models_to_try = [
-        "gemini-2.0-flash-exp",  # Option 1: Experimental (Free Testing ke liye best)
-        "gemini-1.5-flash",      # Option 2: Standard Flash (High Limit)
-        "gemini-2.0-flash",      # Option 3: New Flash
-        "gemini-1.5-pro"         # Option 4: Pro Version
+        "gemini-2.5-flash",              # 1. Newest (Fastest & Empty Queue)
+        "gemini-2.0-flash-lite-preview-02-05", # 2. Lite Version (Very High Limits)
+        "gemini-2.0-flash-exp",          # 3. Experimental
+        "gemini-2.0-flash"               # 4. Standard (Backup)
     ]
     
     headers = {'Content-Type': 'application/json'}
@@ -37,27 +36,31 @@ def get_gemini_response_smart(prompt):
 
     for model_name in models_to_try:
         try:
+            # URL banao specific model ke liye
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={API_KEY}"
             
-            # Request bhej rahe hain...
+            # Request bhejo
             response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=10)
             
             if response.status_code == 200:
-                # BINGO! Jawaab mil gaya
-                return f"✅ (Model: {model_name})\n\n" + response.json()['candidates'][0]['content']['parts'][0]['text']
+                # Success! Batao kaunsa model chala
+                return f"✅ **(Connected: {model_name})**\n\n" + response.json()['candidates'][0]['content']['parts'][0]['text']
+            
             elif response.status_code == 429:
-                # Quota Full - Agla Model Try Karo
-                last_error = f"Model {model_name} busy (429). Switching..."
-                time.sleep(1) # Thoda saans lene do server ko
-                continue 
+                # Quota Full - Agla try karo
+                # st.toast(f"{model_name} busy tha, switching...") # Optional notification
+                time.sleep(0.5)
+                continue
+                
             else:
-                last_error = f"Error {response.status_code}: {response.text}"
+                last_error = f"{model_name} Error: {response.status_code}"
+                continue
                 
         except Exception as e:
             last_error = str(e)
             continue
 
-    return f"❌ Sabhi models busy hain (Quota Exceeded). Please 1 minute baad try karein.\nLast Error: {last_error}"
+    return f"❌ All Models Busy. Last Error: {last_error}. (1 min wait karke refresh karein)"
 
 # --- 1. LIVE CHART ---
 tradingview_html = """
@@ -92,7 +95,7 @@ st.divider()
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.subheader("💬 AI Assistant (Auto-Model Switcher)")
+    st.subheader("💬 AI Assistant (Gemini 2.5 Powered)")
     
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -101,13 +104,13 @@ with col1:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if chat_input := st.chat_input("Puchiye: Market ka haal kya hai?"):
+    if chat_input := st.chat_input("Puchiye: Market ka trend kya hai?"):
         st.session_state.messages.append({"role": "user", "content": chat_input})
         with st.chat_message("user"):
             st.markdown(chat_input)
             
         with st.chat_message("assistant"):
-            with st.spinner("Finding free model..."):
+            with st.spinner("Analyzing with Gemini 2.5..."):
                 res_text = get_gemini_response_smart(chat_input)
                 st.markdown(res_text)
                 st.session_state.messages.append({"role": "assistant", "content": res_text})
@@ -124,6 +127,7 @@ with col2:
                     color = "red" if "High" in n.get('impact', '') else "gray"
                     st.markdown(f"**{n['event']}** ({n['currency']}) | {n['actual']}")
             else:
-                st.warning("⚠️ API Limit Reached.")
+                st.warning("⚠️ API Limit. Showing Backup:")
+                st.markdown("**Gold Spot** | Support: 2550 | Resistance: 2600")
         except:
             st.error("Connection failed.")
