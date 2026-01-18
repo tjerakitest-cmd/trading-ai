@@ -1,10 +1,9 @@
 import streamlit as st
 import requests
 import json
-from PIL import Image
+import time
 
 # --- CONFIGURATION ---
-# Aapki Verified API Key
 API_KEY = "AIzaSyDW70sARpfWEN2PzFqa0kqF0nzUbXK9n3Q"
 FMP_KEY = "Qb1mjKvn5F2xVkkWOchTAzhUGz37JSsM"
 
@@ -20,36 +19,45 @@ st.markdown("""
 
 st.markdown("<h2 style='text-align: center; color: #EAB308;'>🚀 AI Trading Command Center</h2>", unsafe_allow_html=True)
 
-# --- DIRECT GOOGLE CONNECTION (Gemini 2.0 Special) ---
-def chat_with_google(prompt):
-    # Aapki list mein 'gemini-2.0-flash' available hai, hum wahi use karenge
-    # Ye model sabse fast aur naya hai
-    model_name = "gemini-2.0-flash" 
+# --- SMART CONNECTION (AUTO-SWITCH IF QUOTA FULL) ---
+def get_gemini_response_smart(prompt):
+    # Hum pehle Free/Experimental model try karenge, phir Standard, phir Pro.
+    # Agar ek par 429 (Quota Error) aaya, toh agla try karenge.
+    models_to_try = [
+        "gemini-2.0-flash-exp",  # Option 1: Experimental (Free Testing ke liye best)
+        "gemini-1.5-flash",      # Option 2: Standard Flash (High Limit)
+        "gemini-2.0-flash",      # Option 3: New Flash
+        "gemini-1.5-pro"         # Option 4: Pro Version
+    ]
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={API_KEY}"
     headers = {'Content-Type': 'application/json'}
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=10)
-        
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            # Agar 2.0 fail hua to 2.5 try karenge (Backup)
-            backup_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
-            response = requests.post(backup_url, headers=headers, data=json.dumps(payload))
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    last_error = ""
+
+    for model_name in models_to_try:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={API_KEY}"
+            
+            # Request bhej rahe hain...
+            response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=10)
+            
             if response.status_code == 200:
-                 return response.json()['candidates'][0]['content']['parts'][0]['text']
+                # BINGO! Jawaab mil gaya
+                return f"✅ (Model: {model_name})\n\n" + response.json()['candidates'][0]['content']['parts'][0]['text']
+            elif response.status_code == 429:
+                # Quota Full - Agla Model Try Karo
+                last_error = f"Model {model_name} busy (429). Switching..."
+                time.sleep(1) # Thoda saans lene do server ko
+                continue 
             else:
-                 return f"Error Code {response.status_code}: {response.text}"
-                 
-    except Exception as e:
-        return f"Connection Failed: {str(e)}"
+                last_error = f"Error {response.status_code}: {response.text}"
+                
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    return f"❌ Sabhi models busy hain (Quota Exceeded). Please 1 minute baad try karein.\nLast Error: {last_error}"
 
 # --- 1. LIVE CHART ---
 tradingview_html = """
@@ -84,7 +92,7 @@ st.divider()
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.subheader("💬 AI Assistant (Gemini 2.0)")
+    st.subheader("💬 AI Assistant (Auto-Model Switcher)")
     
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -93,14 +101,14 @@ with col1:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if chat_input := st.chat_input("Puchiye: Gold ka trend kya hai?"):
+    if chat_input := st.chat_input("Puchiye: Market ka haal kya hai?"):
         st.session_state.messages.append({"role": "user", "content": chat_input})
         with st.chat_message("user"):
             st.markdown(chat_input)
             
         with st.chat_message("assistant"):
-            with st.spinner("AI thinking (v2.0)..."):
-                res_text = chat_with_google(chat_input)
+            with st.spinner("Finding free model..."):
+                res_text = get_gemini_response_smart(chat_input)
                 st.markdown(res_text)
                 st.session_state.messages.append({"role": "assistant", "content": res_text})
 
@@ -116,6 +124,6 @@ with col2:
                     color = "red" if "High" in n.get('impact', '') else "gray"
                     st.markdown(f"**{n['event']}** ({n['currency']}) | {n['actual']}")
             else:
-                st.warning("News API Limit Reached.")
+                st.warning("⚠️ API Limit Reached.")
         except:
             st.error("Connection failed.")
