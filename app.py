@@ -13,7 +13,7 @@ genai.configure(api_key=GEMINI_KEY)
 # Page Setup
 st.set_page_config(page_title="Pro Trading Dashboard", layout="wide")
 
-# CSS to make Chart Full Width & Remove Padding
+# CSS to make Chart Full Width & Height Fixed
 st.markdown("""
     <style>
         .block-container {padding-top: 1rem; padding-bottom: 0rem; padding-left: 1rem; padding-right: 1rem;}
@@ -50,7 +50,6 @@ tradingview_html = """
         </script>
     </div>
 """
-# Height parameter yahan zaroori hai
 st.components.v1.html(tradingview_html, height=800)
 
 st.divider()
@@ -76,14 +75,14 @@ with col1:
             
         with st.chat_message("assistant"):
             try:
-                # 'gemini-1.5-flash' latest library ke sath hi chalta hai
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # FIX: Using 'gemini-pro' because it works on ALL library versions
+                model = genai.GenerativeModel('gemini-pro')
                 with st.spinner("AI soch raha hai..."):
                     res = model.generate_content(chat_input)
                     st.markdown(res.text)
                     st.session_state.messages.append({"role": "assistant", "content": res.text})
             except Exception as e:
-                st.error(f"Error: {str(e)}. (Check requirements.txt update)")
+                st.error(f"AI Error: {str(e)}")
 
 # Right Side: Screenshot Analyzer
 with col2:
@@ -96,14 +95,16 @@ with col2:
         
         if st.button("Analyze Now"):
             try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # FIX: Using 'gemini-pro-vision' for images (Old reliable model)
+                model = genai.GenerativeModel('gemini-pro-vision')
                 with st.spinner("Analyzing Strategy..."):
                     prompt = "Analyze this chart image for trading signals based on support/resistance and EMAs. Verdict: Buy or Sell?"
                     response = model.generate_content([prompt, img])
                     st.success("Analysis Report:")
                     st.write(response.text)
             except Exception as e:
-                st.error(f"Analysis Failed: {str(e)}")
+                # Fallback agar vision model fail ho
+                st.error(f"Analysis Failed: {str(e)}. Try refreshing.")
 
 # --- 3. NEWS FEED ---
 with st.expander("📢 Live News Updates", expanded=False):
