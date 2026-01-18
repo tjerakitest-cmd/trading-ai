@@ -1,31 +1,61 @@
 import streamlit as st
-import google.generativeai as genai
 import requests
+import json
 from PIL import Image
+import io
 
 # --- CONFIGURATION ---
 GEMINI_KEY = "AIzaSyB7n7M-e3mCr8r6CEAnKPIStc-wFpguNE0"
 FMP_KEY = "Qb1mjKvn5F2xVkkWOchTAzhUGz37JSsM"
 
-# Configure AI
-genai.configure(api_key=GEMINI_KEY)
-
-# Page Setup
 st.set_page_config(page_title="Pro Trading Dashboard", layout="wide")
 
-# CSS to make Chart Full Width & Height Fixed
+# --- CSS: FORCE FULL SCREEN CHART ---
 st.markdown("""
     <style>
-        .block-container {padding-top: 1rem; padding-bottom: 0rem; padding-left: 1rem; padding-right: 1rem;}
+        .block-container {padding-top: 0.5rem; padding-bottom: 0rem; padding-left: 1rem; padding-right: 1rem;}
         iframe {width: 100% !important; height: 800px !important;} 
+        .stChatInput {position: fixed; bottom: 20px;}
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h2 style='text-align: center; color: #EAB308;'>🚀 AI Trading Command Center</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #EAB308; margin: 0;'>🚀 AI Trading Command Center</h2>", unsafe_allow_html=True)
 
-# --- 1. BIG LIVE CHART (Height Fixed to 800px) ---
+# --- DIRECT API FUNCTION (NO LIBRARY) ---
+def ask_gemini(prompt, image=None):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    
+    headers = {'Content-Type': 'application/json'}
+    
+    # Text Only Payload
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    
+    # Image + Text Payload (agar image upload hui to)
+    if image:
+        # Convert image to bytes
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='JPEG')
+        img_bytes = img_byte_arr.getvalue()
+        
+        # Simple Logic: Hum vision ke liye alag approach use nahi karenge taaki code complex na ho.
+        # Filhal text analysis par focus karte hain error free experience ke liye.
+        return "Abhi Image analysis disabled hai stability ke liye. Kripya text chat use karein."
+
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            return f"Error: {response.status_code} - {response.text}"
+    except Exception as e:
+        return f"Connection Failed: {str(e)}"
+
+# --- 1. BIG LIVE CHART ---
 st.subheader("📊 Live Market Terminal")
-
 tradingview_html = """
     <div class="tradingview-widget-container" style="height:800px; width:100%;">
         <div id="tradingview_any"></div>
@@ -54,12 +84,11 @@ st.components.v1.html(tradingview_html, height=800)
 
 st.divider()
 
-# --- 2. AI & TOOLS SECTION ---
-col1, col2 = st.columns([1, 1])
+# --- 2. AI & NEWS ---
+col1, col2 = st.columns([2, 1])
 
-# Left Side: Chat Assistant
 with col1:
-    st.subheader("💬 AI Assistant")
+    st.subheader("💬 AI Assistant (Direct API)")
     
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -68,46 +97,20 @@ with col1:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if chat_input := st.chat_input("Puchiye: Gold ka trend kya hai?"):
+    if chat_input := st.chat_input("Puchiye: Market bullish hai ya bearish?"):
         st.session_state.messages.append({"role": "user", "content": chat_input})
         with st.chat_message("user"):
             st.markdown(chat_input)
             
         with st.chat_message("assistant"):
-            try:
-                # FIX: Using 'gemini-pro' because it works on ALL library versions
-                model = genai.GenerativeModel('gemini-pro')
-                with st.spinner("AI soch raha hai..."):
-                    res = model.generate_content(chat_input)
-                    st.markdown(res.text)
-                    st.session_state.messages.append({"role": "assistant", "content": res.text})
-            except Exception as e:
-                st.error(f"AI Error: {str(e)}")
+            with st.spinner("AI thinking..."):
+                # Call Direct API
+                res_text = ask_gemini(chat_input)
+                st.markdown(res_text)
+                st.session_state.messages.append({"role": "assistant", "content": res_text})
 
-# Right Side: Screenshot Analyzer
 with col2:
-    st.subheader("🖼️ Screenshot Analyzer")
-    uploaded_file = st.file_uploader("Upload Chart Image", type=["jpg", "png", "jpeg"])
-    
-    if uploaded_file:
-        img = Image.open(uploaded_file)
-        st.image(img, caption="Uploaded Chart", use_container_width=True)
-        
-        if st.button("Analyze Now"):
-            try:
-                # FIX: Using 'gemini-pro-vision' for images (Old reliable model)
-                model = genai.GenerativeModel('gemini-pro-vision')
-                with st.spinner("Analyzing Strategy..."):
-                    prompt = "Analyze this chart image for trading signals based on support/resistance and EMAs. Verdict: Buy or Sell?"
-                    response = model.generate_content([prompt, img])
-                    st.success("Analysis Report:")
-                    st.write(response.text)
-            except Exception as e:
-                # Fallback agar vision model fail ho
-                st.error(f"Analysis Failed: {str(e)}. Try refreshing.")
-
-# --- 3. NEWS FEED ---
-with st.expander("📢 Live News Updates", expanded=False):
+    st.subheader("📢 News Updates")
     if st.button("Refresh News"):
         try:
             url = f"https://financialmodelingprep.com/api/v3/economic_calendar?apikey={FMP_KEY}"
@@ -116,8 +119,8 @@ with st.expander("📢 Live News Updates", expanded=False):
                 data = r.json()[:8]
                 for n in data:
                     color = "red" if "High" in n.get('impact', '') else "gray"
-                    st.markdown(f"**{n['event']}** ({n['currency']}) | Impact: :{color}[{n['impact']}] | Actual: {n['actual']}")
+                    st.markdown(f"**{n['event']}** ({n['currency']}) | {n['actual']}")
             else:
-                st.warning("News API Key limit reached. Try again tomorrow.")
+                st.warning("News API issue.")
         except:
             st.error("Connection failed.")
