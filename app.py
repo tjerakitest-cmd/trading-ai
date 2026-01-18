@@ -1,8 +1,6 @@
 import streamlit as st
 import requests
 import json
-from PIL import Image
-import io
 
 # --- CONFIGURATION ---
 GEMINI_KEY = "AIzaSyB7n7M-e3mCr8r6CEAnKPIStc-wFpguNE0"
@@ -13,51 +11,43 @@ st.set_page_config(page_title="Pro Trading Dashboard", layout="wide")
 # --- CSS: FORCE FULL SCREEN CHART ---
 st.markdown("""
     <style>
-        .block-container {padding-top: 0.5rem; padding-bottom: 0rem; padding-left: 1rem; padding-right: 1rem;}
-        iframe {width: 100% !important; height: 800px !important;} 
-        .stChatInput {position: fixed; bottom: 20px;}
+        .block-container {padding-top: 0rem; padding-bottom: 0rem; padding-left: 0.5rem; padding-right: 0.5rem;}
+        iframe {width: 100% !important; height: 85vh !important;} 
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h2 style='text-align: center; color: #EAB308; margin: 0;'>🚀 AI Trading Command Center</h2>", unsafe_allow_html=True)
+# --- SMART CONNECT FUNCTION (TRY ALL MODELS) ---
+def ask_gemini_smart(prompt):
+    # Hum 3 alag-alag models try karenge jab tak ek chal na jaye
+    models_to_try = [
+        "gemini-1.5-flash", 
+        "gemini-1.5-flash-latest", 
+        "gemini-pro", 
+        "gemini-1.0-pro"
+    ]
+    
+    for model_name in models_to_try:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_KEY}"
+            headers = {'Content-Type': 'application/json'}
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            
+            response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=5)
+            
+            if response.status_code == 200:
+                # Agar success ho gaya, toh answer return kardo aur loop tod do
+                return response.json()['candidates'][0]['content']['parts'][0]['text']
+            
+        except:
+            continue # Agar fail hua toh agla model try karo
+            
+    return "Error: Koi bhi model connect nahi ho pa raha. Please naya API Key generate karein Google AI Studio se."
 
-# --- DIRECT API FUNCTION (NO LIBRARY) ---
-def ask_gemini(prompt, image=None):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
-    
-    headers = {'Content-Type': 'application/json'}
-    
-    # Text Only Payload
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
-    }
-    
-    # Image + Text Payload (agar image upload hui to)
-    if image:
-        # Convert image to bytes
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='JPEG')
-        img_bytes = img_byte_arr.getvalue()
-        
-        # Simple Logic: Hum vision ke liye alag approach use nahi karenge taaki code complex na ho.
-        # Filhal text analysis par focus karte hain error free experience ke liye.
-        return "Abhi Image analysis disabled hai stability ke liye. Kripya text chat use karein."
-
-    try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            return f"Error: {response.status_code} - {response.text}"
-    except Exception as e:
-        return f"Connection Failed: {str(e)}"
+st.markdown("<h3 style='text-align: center; color: #EAB308; margin: 0; padding: 10px;'>🚀 AI Trading Command Center</h3>", unsafe_allow_html=True)
 
 # --- 1. BIG LIVE CHART ---
-st.subheader("📊 Live Market Terminal")
 tradingview_html = """
-    <div class="tradingview-widget-container" style="height:800px; width:100%;">
+    <div class="tradingview-widget-container" style="height:85vh; width:100%;">
         <div id="tradingview_any"></div>
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script type="text/javascript">
@@ -80,7 +70,7 @@ tradingview_html = """
         </script>
     </div>
 """
-st.components.v1.html(tradingview_html, height=800)
+st.components.v1.html(tradingview_html, height=700)
 
 st.divider()
 
@@ -88,7 +78,7 @@ st.divider()
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("💬 AI Assistant (Direct API)")
+    st.subheader("💬 AI Assistant")
     
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -103,9 +93,8 @@ with col1:
             st.markdown(chat_input)
             
         with st.chat_message("assistant"):
-            with st.spinner("AI thinking..."):
-                # Call Direct API
-                res_text = ask_gemini(chat_input)
+            with st.spinner("Connecting to best available model..."):
+                res_text = ask_gemini_smart(chat_input)
                 st.markdown(res_text)
                 st.session_state.messages.append({"role": "assistant", "content": res_text})
 
